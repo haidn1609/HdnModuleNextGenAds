@@ -1,5 +1,5 @@
 # Function:  
-Support load and show ads  
+Support load and show ads (Google Mobile Ads **Next-Gen SDK** `com.google.android.libraries.ads.mobile.sdk`)  
 # How to use  
 ## Import
 Add it in your settings.gradle.kts at the end of repositories:
@@ -15,29 +15,40 @@ Add it in your settings.gradle.kts at the end of repositories:
 Add the dependency
 ```kotlin
 dependencies {
-	        implementation("com.github.haidn1609:HdnModuleAds:1.0.5")
-	}
+	implementation("com.github.haidn1609:HdnModuleAds:1.0.5")
+	// GMA Next-Gen SDK — cần cho việc init MobileAds ở app
+	implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.2.1")
+}
 ```
 ## Init
 In Application:  
 ```kotlin
- MobileAds.initialize(
-                context,
-                initializationStatus -> {
-                });
+import com.google.android.libraries.ads.mobile.sdk.MobileAds
+import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
+
+MobileAds.initialize(
+    this,
+    InitializationConfig.Builder("YOUR_ADMOB_APP_ID")
+        .setNativeValidatorDisabled() // optional: tắt overlay "native ad validator" khi test native
+        .build()
+) {
+    // init done
+}
 ```
+> Next-Gen SDK: App ID truyền qua `InitializationConfig`. **KHÔNG** cần meta-data `com.google.android.gms.ads.APPLICATION_ID` trong Manifest nữa (SDK không còn `MobileAdsInitProvider`).
+
 Add AndroidManifest.xml
-```kotlin
-  <activity
-            android:name="com.hdn.adsmodule.ads.open.Overlay"
-            android:exported="false"/>
+```xml
+<activity
+    android:name="com.hdn.adsmodule.ads.open.Overlay"
+    android:exported="false"/>
 ```
 add build.gradle
 ```kotlin
- buildFeatures {
-        buildConfig = true
-        dataBinding = true
-    }
+buildFeatures {
+    buildConfig = true
+    dataBinding = true
+}
 ```
 ## Usage
 ### Open
@@ -49,14 +60,15 @@ AdsManager.setOpaIdRm(id) // idRemote
 ```
 init in application
 ```kotlin
-new OpenAdsHelper().setup(application);
+OpenAdsHelper().setup(application)
 //disable activity if you dont want show
-OpenAds.disableAdsOpenForActivity(YourActivity.class);
+OpenAds.disableAdsOpenForActivity(YourActivity::class.java)
 ```
 load ads
 ```kotlin
-OpenAds.initOpenAds(activity){
-        //action load done
+// Next-Gen: load static, không cần truyền Activity/Context
+OpenAds.initOpenAds {
+    //action load done
 }
 ```
 ### Interstitial
@@ -68,14 +80,14 @@ AdsManager.setItaIdRm(id) // idRemote
 ```
 load ads
 ```kotlin
- InterAds.initInterAds(
-            context = activity,
-            onLoadError = {
-                //action load err
-            },
-            onLoadSuccess = {
-                //action load success
-            })
+// Next-Gen: không cần truyền context
+InterAds.initInterAds(
+    onLoadError = {
+        //action load err
+    },
+    onLoadSuccess = {
+        //action load success
+    })
 ```
 show ads
 ```kotlin
@@ -92,9 +104,10 @@ AdsManager.setItsaIdRm(id) // idRemote
 ```
 load ads
 ```kotlin
-InterSplashAds.initInterAds(activity){
-            //action load done
-        }
+// Next-Gen: không cần truyền context
+InterSplashAds.initInterAds {
+    //action load done
+}
 ```
 show ads
 ```kotlin
@@ -183,6 +196,7 @@ AdsManager.showNative(activity,key,resId,viewContainer);
 //load and show
 AdsManager.loadAndShowNative(activity,key,resId,viewContainer);
 ```
+> Next-Gen native: layout truyền vào (`resId`) phải là `com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView`, media dùng `...nativead.MediaView` với `android:id="@+id/media_view"`. Nếu layout **không có** `media_view` (native không media) thì vẫn chạy — SDK cho phép bỏ MediaView. Các id asset dùng: `primary` (headline), `body`, `cta`, `secondary` (advertiser), `icon`, `rating_bar`.
 ### Other
 ```kotlin
 //set use ad debug
@@ -191,11 +205,11 @@ AdsManager.setDebug(true);
 AdsManager.setEnabled(true);
 //set vip/premium
 AdsManager.setVip(true);
-//set callback adsPair
+//set callback adsPair (đã đưa về main thread)
 AdsManager.adsPair = {adValue->
             //action  pair
         }
-//set callback log ads
+//set callback log ads (đã đưa về main thread)
  AdsManager.adsLog = {adLog->
             //action log
         }
