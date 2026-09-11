@@ -1,19 +1,19 @@
 package com.hdn.adsmodule.ads.inter
 
 import android.app.Activity
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.interstitial.InterstitialAd
-import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue as SdkAdValue
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
 import com.hdn.adsmodule.R
 import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
@@ -47,7 +47,6 @@ object InterSplashAds {
 
     @JvmStatic
     fun initInterAds(
-        ac: Context,
         adUnitIds: List<String> = interIdDefault,
         callback: Callback?
     ) {
@@ -66,11 +65,10 @@ object InterSplashAds {
 
         mInterstitialAd = null
         isLoading = true
-        loadInterstitialByIndex(ac, currentAdUnitIds, 0, callback)
+        loadInterstitialByIndex(currentAdUnitIds, 0, callback)
     }
 
     private fun loadInterstitialByIndex(
-        context: Context,
         ids: List<String>,
         index: Int,
         callback: Callback?
@@ -82,47 +80,33 @@ object InterSplashAds {
         }
         val adUnitId = ids[index]
         AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.START_LOAD, null))
+        // NextGen: load static, adUnitId nằm trong AdRequest, không cần context
         InterstitialAd.load(
-            context,
-            adUnitId,
-            adRequest,
-            object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(interstitialAd: InterstitialAd) {
-                    super.onAdLoaded(interstitialAd)
+            AdRequest.Builder(adUnitId).build(),
+            object : AdLoadCallback<InterstitialAd> {
+                override fun onAdLoaded(ad: InterstitialAd) {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
-                    mInterstitialAd = interstitialAd
+                    mInterstitialAd = ad
                     isLoading = false
                     loadTimeAd = System.currentTimeMillis()
-                    mInterstitialAd?.setOnPaidEventListener { adValue ->
-                        AdsManager.onAdsPair(
-                            AdValue(
-                                adValue,
-                                mInterstitialAd?.responseInfo?.loadedAdapterResponseInfo
-                            )
-                        )
-                    }
                     callback?.invoke()
                 }
 
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    super.onAdFailedToLoad(loadAdError)
+                override fun onAdFailedToLoad(adError: LoadAdError) {
                     AdsManager.onAdsLog(
                         AdsLog(
                             AdsLog.Type.INTER_SPLASH,
                             adUnitId,
                             AdsLog.Action.LOAD,
                             AdsLog.Mess.LOAD_FAILED,
-                            loadAdError
+                            adError
                         )
                     )
-                    loadInterstitialByIndex(context, ids, index + 1, callback)
+                    loadInterstitialByIndex(ids, index + 1, callback)
                 }
             }
         )
     }
-
-    private val adRequest: AdRequest
-        get() = AdRequest.Builder().build()
 
     val isCanShowAds: Boolean
         get() = mInterstitialAd != null && !isAdsOverdue
@@ -197,7 +181,7 @@ object InterSplashAds {
                 showAfterFakeTime(startTime)
             } else {
                 // callback của initInterAds bắn cả khi load xong lẫn fail -> chờ nốt fake time rồi kiểm tra
-                initInterAds(activity, callback = { showAfterFakeTime(startTime) })
+                initInterAds(callback = { showAfterFakeTime(startTime) })
             }
             return
         }
@@ -230,27 +214,30 @@ object InterSplashAds {
             return
         }
         val dialogNativeFull = FullScreenDialog.newInstance(dialogRes, nativeKey)
-        currentAd.fullScreenContentCallback = object : FullScreenContentCallback() {
-            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                super.onAdFailedToShowFullScreenContent(adError)
-                AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_FAILED, adError))
+        // NextGen: gộp paid + full-screen events vào adEventCallback
+        currentAd.adEventCallback = object : InterstitialAdEventCallback {
+            override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+                AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_FAILED, fullScreenContentError))
                 mInterstitialAd = null
                 doneCallBack?.invoke()
             }
 
             override fun onAdShowedFullScreenContent() {
-                super.onAdShowedFullScreenContent()
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_SUCCESS, null))
                 startCallback?.invoke()
             }
 
             override fun onAdClicked() {
-                super.onAdClicked()
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, "", AdsLog.Action.ADS_CLICK, AdsLog.Action.SHOW_ADS_FULL, null))
             }
 
+            override fun onAdPaid(value: SdkAdValue) {
+                AdsManager.onAdsPair(
+                    AdValue(value, currentAd.responseInfo.loadedAdSourceResponseInfo)
+                )
+            }
+
             override fun onAdDismissedFullScreenContent() {
-                super.onAdDismissedFullScreenContent()
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_DISMISS, null))
                 mInterstitialAd = null
                 if (dialogNativeFull.dialog != null && showDialog) {

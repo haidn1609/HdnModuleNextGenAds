@@ -1,18 +1,18 @@
 package com.hdn.adsmodule.ads.inter
 
 import android.app.Activity
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.appcompat.app.AppCompatActivity
 
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.interstitial.InterstitialAd
-import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue as SdkAdValue
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
 import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
@@ -23,13 +23,13 @@ import com.hdn.adsmodule.model.AdsLog
 
 import java.util.Date
 import kotlin.collections.ifEmpty
-import kotlin.let
 import kotlin.run
 
 typealias Callback = (() -> Unit)
 // Callback show inter: true = show thành công, false = không show được
 typealias InterCallback = ((Boolean) -> Unit)
 
+@Suppress("unused")
 object InterAds {
     private val interIdDefault: List<String>
         get() = AdUnitParser.parse(
@@ -59,7 +59,6 @@ object InterAds {
     @JvmStatic
     @JvmOverloads
     fun initInterAds(
-        context: Context,
         adUnitIds: List<String> = interIdDefault,
         isForceReload: Boolean = false,
         onLoadSuccess: (() -> Unit)? = null,
@@ -87,20 +86,16 @@ object InterAds {
         isLoading = true
 
         loadInterstitialByIndex(
-            context = context.applicationContext,
             ids = currentAdUnitIds,
             index = 0,
-            adRequest = AdRequest.Builder().build(),
             onLoadSuccess = onLoadSuccess,
             onLoadError = onLoadError
         )
     }
 
     private fun loadInterstitialByIndex(
-        context: Context,
         ids: List<String>,
         index: Int,
-        adRequest: AdRequest,
         onLoadSuccess: (() -> Unit)?,
         onLoadError: (() -> Unit)?
     ) {
@@ -111,34 +106,23 @@ object InterAds {
             return
         }
         AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.START_LOAD, null))
+        // NextGen: load static, adUnitId nằm trong AdRequest, không cần context
         InterstitialAd.load(
-            context,
-            ids[index],
-            adRequest,
-            object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(interstitialAd: InterstitialAd) {
+            AdRequest.Builder(ids[index]).build(),
+            object : AdLoadCallback<InterstitialAd> {
+                override fun onAdLoaded(ad: InterstitialAd) {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
-                    mInterstitialAd = interstitialAd
-                    mInterstitialAd?.setOnPaidEventListener { adValue ->
-                        AdsManager.onAdsPair(
-                            AdValue(
-                                adValue,
-                                mInterstitialAd?.responseInfo?.loadedAdapterResponseInfo
-                            )
-                        )
-                    }
+                    mInterstitialAd = ad
                     isLoading = false
                     loadTimeAd = Date().time
                     onLoadSuccess?.invoke()
                 }
 
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, loadAdError))
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, adError))
                     loadInterstitialByIndex(
-                        context = context,
                         ids = ids,
                         index = index + 1,
-                        adRequest = adRequest,
                         onLoadSuccess = onLoadSuccess,
                         onLoadError = onLoadError
                     )
@@ -224,7 +208,6 @@ object InterAds {
             LoadingDialog.show(activity)
             val startTime = SystemClock.elapsedRealtime()
             initInterAds(
-                context = activity,
                 isForceReload = true,
                 onLoadSuccess = {
                     // Đảm bảo loading hiển thị đủ fakeLoadingTime dù ad load nhanh hơn
@@ -261,7 +244,6 @@ object InterAds {
         // Chưa có ad -> bắn loading, load xong show luôn
         LoadingDialog.show(activity)
         initInterAds(
-            context = activity,
             isForceReload = true,
             onLoadSuccess = {
                 LoadingDialog.dismiss()
@@ -318,7 +300,6 @@ object InterAds {
             LoadingDialog.show(activity)
             val startTime = SystemClock.elapsedRealtime()
             initInterAds(
-                context = activity,
                 useWithoutVip = useWithoutVip,
                 onLoadSuccess = {
                     val remaining = fakeLoadingTime - (SystemClock.elapsedRealtime() - startTime)
@@ -343,7 +324,7 @@ object InterAds {
             showAdsFull(activity, useWithoutVip, callback = callback)
         } else {
             AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, "", AdsLog.Action.SHOW, AdsLog.Mess.ERR_CALL_SHOW, null))
-            activity?.let { initInterAds(context = it, useWithoutVip = useWithoutVip) }
+            initInterAds(useWithoutVip = useWithoutVip)
             callback?.invoke(false)
         }
     }
@@ -365,12 +346,13 @@ object InterAds {
             return
         }
 
-        currentAd.fullScreenContentCallback = object : FullScreenContentCallback() {
-            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_FAILED, adError))
+        // NextGen: gộp paid + full-screen events vào adEventCallback
+        currentAd.adEventCallback = object : InterstitialAdEventCallback {
+            override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+                AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_FAILED, fullScreenContentError))
                 mInterstitialAd = null
                 isShowing = false
-                if (autoCache) initInterAds(context = context, useWithoutVip = useWithoutVip)
+                if (autoCache) initInterAds(useWithoutVip = useWithoutVip)
                 callback?.invoke(false)
             }
 
@@ -383,12 +365,18 @@ object InterAds {
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, "", AdsLog.Action.ADS_CLICK, AdsLog.Action.SHOW_ADS_FULL, null))
             }
 
+            override fun onAdPaid(value: SdkAdValue) {
+                AdsManager.onAdsPair(
+                    AdValue(value, currentAd.getResponseInfo().loadedAdSourceResponseInfo)
+                )
+            }
+
             override fun onAdDismissedFullScreenContent() {
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_DISMISS, null))
                 isShowing = false
                 mInterstitialAd = null
                 startDelay()
-                if (autoCache) initInterAds(context = context, useWithoutVip = useWithoutVip)
+                if (autoCache) initInterAds(useWithoutVip = useWithoutVip)
                 callback?.invoke(true)
             }
         }
