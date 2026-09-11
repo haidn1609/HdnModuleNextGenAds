@@ -233,7 +233,7 @@ object InterSplashAds {
 
             override fun onAdPaid(value: SdkAdValue) {
                 AdsManager.onAdsPair(
-                    AdValue(value, currentAd.responseInfo.loadedAdSourceResponseInfo)
+                    AdValue(value, currentAd.getResponseInfo().loadedAdSourceResponseInfo)
                 )
             }
 

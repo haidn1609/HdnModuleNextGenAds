@@ -31,19 +31,20 @@ public class MainActivity extends AppCompatActivity {
     private void initData() {
         AdsManager.setDebug(true);
         AdsManager.setVip(false);
-        AdsManager.setEnabled(false);
+        AdsManager.setEnabled(true);
         RemoteManager.initRemoteConfig(() -> {
             Toast.makeText(this, "config done", Toast.LENGTH_SHORT).show();
 
-            InterAds.initInterAds(this, new ArrayList<>(), false, null, null);
-            InterSplashAds.initInterAds(this, new ArrayList<>(), null);
+            InterAds.initInterAds( new ArrayList<>(), false, null, null);
+            InterSplashAds.initInterAds( new ArrayList<>(), null);
             OpenAds.initOpenAds(new ArrayList<>(), null);
         });
         AdsManager.setAdsPair(adValue -> {
+            Log.e("Ads_pair", adValue.toString());
             return null;
         });
-        AdsManager.setAdsLog(adValue -> {
-            Log.e("Ads_log", adValue.toString());
+        AdsManager.setAdsLog(adsLog -> {
+            Log.e("Ads_log", adsLog.toString());
             return null;
         });
     }
