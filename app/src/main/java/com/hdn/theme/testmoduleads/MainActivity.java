@@ -7,7 +7,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.databinding.DataBindingUtil;
 
-import com.google.gson.Gson;
 import com.hdn.adsmodule.ads.AdsManager;
 import com.hdn.adsmodule.ads.inter.InterAds;
 import com.hdn.adsmodule.ads.inter.InterSplashAds;
@@ -38,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
 
             InterAds.initInterAds(this, new ArrayList<>(), false, null, null);
             InterSplashAds.initInterAds(this, new ArrayList<>(), null);
-            OpenAds.initOpenAds(this, new ArrayList<>(), null);
+            OpenAds.initOpenAds(new ArrayList<>(), null);
         });
         AdsManager.setAdsPair(adValue -> {
             return null;

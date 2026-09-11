@@ -1,14 +1,15 @@
 package com.hdn.adsmodule.ads.open
 
 import android.app.Activity
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.appopen.AppOpenAd
+import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAd
+import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue as SdkAdValue
 import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
@@ -18,6 +19,7 @@ import com.hdn.adsmodule.model.AdValue
 import com.hdn.adsmodule.model.AdsLog
 import java.util.Date
 
+@Suppress("unused")
 object OpenAds {
     private val openIdDefault: List<String>
         get() = AdUnitParser.parse(
@@ -41,7 +43,6 @@ object OpenAds {
 
     @JvmStatic
     fun initOpenAds(
-        context: Context,
         adUnitIds: List<String> = openIdDefault,
         callback: Callback?
     ) {
@@ -59,11 +60,10 @@ object OpenAds {
         }
 
         appOpenAd = null
-        loadOpenAdByIndex(context, currentAdUnitIds, 0, callback)
+        loadOpenAdByIndex(currentAdUnitIds, 0, callback)
     }
 
     private fun loadOpenAdByIndex(
-        context: Context,
         ids: List<String>,
         index: Int,
         callback: Callback?
@@ -74,29 +74,20 @@ object OpenAds {
             return
         }
         AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.START_LOAD, null))
+        // NextGen: load static, adUnitId nằm trong AdRequest, không cần context
         AppOpenAd.load(
-            context,
-            ids[index],
-            getAdRequest(),
-            object : AppOpenAd.AppOpenAdLoadCallback() {
+            AdRequest.Builder(ids[index]).build(),
+            object : AdLoadCallback<AppOpenAd> {
                 override fun onAdLoaded(ad: AppOpenAd) {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
                     appOpenAd = ad
-                    appOpenAd?.setOnPaidEventListener { adValue ->
-                        AdsManager.onAdsPair(
-                            AdValue(
-                                adValue,
-                                appOpenAd?.responseInfo?.loadedAdapterResponseInfo
-                            )
-                        )
-                    }
                     loadTimeOpenAd = Date().time
                     callback?.invoke()
                 }
 
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.START_FAILED, loadAdError))
-                    loadOpenAdByIndex(context, ids, index + 1, callback)
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.START_FAILED, adError))
+                    loadOpenAdByIndex(ids, index + 1, callback)
                 }
             }
         )
@@ -105,10 +96,6 @@ object OpenAds {
     private fun isOpenAdsCanUse(): Boolean {
         val dateDifference = Date().time - loadTimeOpenAd
         return dateDifference < 3600000 * 4
-    }
-
-    private fun getAdRequest(): AdRequest {
-        return AdRequest.Builder().build()
     }
 
     fun isCanShowOpenAds(): Boolean {
@@ -130,15 +117,16 @@ object OpenAds {
         }
         if (appOpenAd == null) {
             // chưa có ad -> tranh thủ load, trả callback để caller đi tiếp (thường là điều hướng sau splash)
-            initOpenAds(context) { callback?.invoke() }
+            initOpenAds() { callback?.invoke() }
             return
         }
         AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN , "", AdsLog.Action.SHOW, AdsLog.Mess.CALL_SHOW,null))
         if (flagQC == 1) {
             if (isCanShowOpenAds()) {
-                appOpenAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
-                    override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                        AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN , "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED,adError))
+                // NextGen: gộp paid + full-screen events vào adEventCallback (thay OnPaidEventListener + FullScreenContentCallback)
+                appOpenAd?.adEventCallback = object : AppOpenAdEventCallback {
+                    override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+                        AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN , "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED,fullScreenContentError))
                         appOpenAd = null
                         callback?.invoke()
                     }
@@ -152,11 +140,17 @@ object OpenAds {
                         AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN , "", AdsLog.Action.ADS_CLICK, AdsLog.Action.SHOW,null))
                     }
 
+                    override fun onAdPaid(value: SdkAdValue) {
+                        AdsManager.onAdsPair(
+                            AdValue(value, appOpenAd?.getResponseInfo()?.loadedAdSourceResponseInfo)
+                        )
+                    }
+
                     override fun onAdDismissedFullScreenContent() {
                         AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN , "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_DISMISS,null))
                         isOpenShowingAd = false
                         appOpenAd = null
-                        initOpenAds(context) {}
+                        initOpenAds {}
                         startDelay()
                         callback?.invoke()
                         Overlay.finish()
