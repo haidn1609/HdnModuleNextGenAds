@@ -1,7 +1,6 @@
 package com.hdn.adsmodule.ads.nativeAds
 
 import android.app.Activity
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -9,15 +8,16 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.RatingBar
 import android.widget.TextView
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdLoader
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.VideoOptions
-import com.google.android.gms.ads.nativead.MediaView
-import com.google.android.gms.ads.nativead.NativeAd
-import com.google.android.gms.ads.nativead.NativeAdOptions
-import com.google.android.gms.ads.nativead.NativeAdView
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.VideoOptions
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue as SdkAdValue
+import com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoader
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoaderCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView
 import com.hdn.adsmodule.R
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsManager
@@ -34,8 +34,6 @@ import kotlin.text.isNullOrEmpty
 class NativeAdManager(
     private val key: String, private val adUnitIds: List<String>
 ) {
-
-    private val TAG = "NativeAdManager"
 
     private val cachedAds = ArrayDeque<NativeAd>()
     private val activeAds = linkedSetOf<NativeAd>()
@@ -93,95 +91,87 @@ class NativeAdManager(
 
         val adUnitId = adUnitIds[currentIndex]
 
-        val adLoader = AdLoader.Builder(activity, adUnitId).forNativeAd { ad ->
+        // NextGen: dùng NativeAdLoader.load + NativeAdRequest; video options nằm trong request
+        val request = NativeAdRequest.Builder(adUnitId, listOf(NativeAd.NativeAdType.NATIVE))
+            .setVideoOptions(VideoOptions.Builder().setStartMuted(true).build())
+            .build()
 
-                activeAds.add(ad)
+        NativeAdLoader.load(
+            request,
+            object : NativeAdLoaderCallback {
+                override fun onNativeAdLoaded(ad: NativeAd) {
 
-                when (mode) {
+                    activeAds.add(ad)
 
-                    LoadMode.CACHE -> {
-                        cachedAds.addLast(ad)
-
-                        isLoading = false
-                        tryShowPending()
-
-                        if (desiredCacheSize > 0 && cachedAds.size < desiredCacheSize) {
-                            preload(activity, desiredCacheSize)
-                        }
-                    }
-
-                    LoadMode.NO_CACHE -> {
-
-                        isLoading = false
-
-                        val pending = pendingShow
-
-                        val container = pending?.containerRef?.get()
-
-                        if (pending != null && container != null) {
-
-                            val adView = activity.layoutInflater.inflate(
-                                pending.layoutResId, container, false
-                            ) as NativeAdView
-
-                            populateNativeAdView(
-                                activity, adView, ad, container
+                    // NextGen: paid + click gộp vào adEventCallback (thay OnPaidEventListener + AdListener)
+                    ad.adEventCallback = object : NativeAdEventCallback {
+                        override fun onAdClicked() {
+                            AdsManager.onAdsLog(
+                                AdsLog(key, adUnitId, AdsLog.Action.ADS_CLICK, AdsLog.Action.SHOW, null)
                             )
+                        }
 
-                            pendingShow = null
-                        } else {
-                            releaseAd(ad)
+                        override fun onAdPaid(value: SdkAdValue) {
+                            AdsManager.onAdsPair(
+                                AdValue(value, ad.getResponseInfo().loadedAdSourceResponseInfo)
+                            )
                         }
                     }
-                }
 
-                ad.setOnPaidEventListener { adValue ->
-                    AdsManager.onAdsPair(
-                        AdValue(
-                            adValue, ad.responseInfo?.loadedAdapterResponseInfo
-                        )
-                    )
-                }
+                    when (mode) {
 
-                AdsManager.onAdsLog(
-                    AdsLog(
-                        key, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null
-                    )
-                )
-            }.withAdListener(object : AdListener() {
+                        LoadMode.CACHE -> {
+                            cachedAds.addLast(ad)
 
-                override fun onAdClicked() {
+                            isLoading = false
+                            tryShowPending()
+
+                            if (desiredCacheSize > 0 && cachedAds.size < desiredCacheSize) {
+                                preload(activity, desiredCacheSize)
+                            }
+                        }
+
+                        LoadMode.NO_CACHE -> {
+
+                            isLoading = false
+
+                            val pending = pendingShow
+
+                            val container = pending?.containerRef?.get()
+
+                            if (pending != null && container != null) {
+
+                                val adView = activity.layoutInflater.inflate(
+                                    pending.layoutResId, container, false
+                                ) as NativeAdView
+
+                                populateNativeAdView(
+                                    activity, adView, ad, container
+                                )
+
+                                pendingShow = null
+                            } else {
+                                releaseAd(ad)
+                            }
+                        }
+                    }
+
                     AdsManager.onAdsLog(
-                        AdsLog(
-                            key, adUnitId, AdsLog.Action.ADS_CLICK, AdsLog.Action.SHOW, null
-                        )
+                        AdsLog(key, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null)
                     )
                 }
 
-                override fun onAdFailedToLoad(
-                    loadAdError: LoadAdError
-                ) {
+                override fun onAdFailedToLoad(adError: LoadAdError) {
 
                     AdsManager.onAdsLog(
-                        AdsLog(
-                            key, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, loadAdError
-                        )
+                        AdsLog(key, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, adError)
                     )
 
                     currentIndex++
 
-                    loadNextAd(
-                        activity, mode
-                    )
+                    loadNextAd(activity, mode)
                 }
-            }).withNativeAdOptions(
-                NativeAdOptions.Builder().setVideoOptions(
-                        VideoOptions.Builder().setStartMuted(true).build()
-                    ).build()
-            ).build()
-
-        adLoader.loadAd(
-            AdRequest.Builder().build()
+            }
         )
     }
 
@@ -380,18 +370,18 @@ class NativeAdManager(
 
         container.addView(adView)
 
+        // NextGen: registerNativeAd bắt buộc có MediaView -> layout native phải chứa R.id.media_view
+        val mediaView = adView.findViewById<MediaView>(R.id.media_view)
+
         with(adView) {
 
-            findViewById<MediaView>(R.id.media_view)?.let { mv ->
-
-                mediaView = mv
-
-                mv.mediaContent = ad.mediaContent
-
-                mv.visibility = if (ad.mediaContent != null) {
-                    View.VISIBLE
+            mediaView?.let { mv ->
+                val mediaContent = ad.mediaContent
+                if (mediaContent != null) {
+                    mv.mediaContent = mediaContent
+                    mv.visibility = View.VISIBLE
                 } else {
-                    View.GONE
+                    mv.visibility = View.GONE
                 }
             }
 
@@ -454,7 +444,14 @@ class NativeAdManager(
                 }
             }
 
-            setNativeAd(ad)
+            if (mediaView != null) {
+                registerNativeAd(ad, mediaView)
+            } else {
+                // NextGen yêu cầu MediaView để register -> không có media_view thì không hiển thị/track được
+                AdsManager.onAdsLog(
+                    AdsLog(key, "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED, null)
+                )
+            }
 
             AdsManager.onAdsLog(
                 AdsLog(
