@@ -5,12 +5,15 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.widget.Toast
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.rewarded.RewardedAd
-import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue as SdkAdValue
+import com.google.android.libraries.ads.mobile.sdk.rewarded.OnUserEarnedRewardListener
+import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
+import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAd
+import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
 import com.hdn.adsmodule.R
 import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
@@ -21,6 +24,7 @@ import com.hdn.adsmodule.base.ui.LoadingDialog
 import com.hdn.adsmodule.model.AdValue
 import com.hdn.adsmodule.model.AdsLog
 
+@Suppress("unused")
 object RewardAds {
     private val rewardIdDefault: List<String>
         get() = AdUnitParser.parse(
@@ -45,13 +49,12 @@ object RewardAds {
             .show()
     }
 
-    fun preload(context: Activity) {
+    fun preload() {
         currentAdUnitIds = rewardIdDefault
         if (rewardedAd != null || isLoading) return
 
         isLoading = true
         loadRewardedAd(
-            activity = context,
             ids = currentAdUnitIds,
             index = 0,
             onLoaded = {},
@@ -147,7 +150,6 @@ object RewardAds {
         val startTime = SystemClock.elapsedRealtime()
 
         loadRewardedAd(
-            activity = activity,
             ids = currentAdUnitIds,
             index = 0,
             onLoaded = { ad ->
@@ -173,7 +175,6 @@ object RewardAds {
     }
 
     private fun loadRewardedAd(
-        activity: Activity,
         ids: List<String>,
         index: Int,
         onLoaded: (RewardedAd) -> Unit,
@@ -186,29 +187,20 @@ object RewardAds {
             return
         }
         AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.START_LOAD, null))
+        // NextGen: load static, adUnitId nằm trong AdRequest, không cần context
         RewardedAd.load(
-            activity,
-            ids[index],
-            AdRequest.Builder().build(),
-            object : RewardedAdLoadCallback() {
+            AdRequest.Builder(ids[index]).build(),
+            object : AdLoadCallback<RewardedAd> {
                 override fun onAdLoaded(ad: RewardedAd) {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
                     rewardedAd = ad
                     isLoading = false
-                    ad.setOnPaidEventListener {
-                        AdsManager.onAdsPair(
-                            AdValue(
-                                it,
-                                ad.responseInfo.loadedAdapterResponseInfo
-                            )
-                        )
-                    }
                     onLoaded(ad)
                 }
 
-                override fun onAdFailedToLoad(error: LoadAdError) {
-                    AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, error))
-                    loadRewardedAd(activity, ids, index + 1, onLoaded, onFailed)
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, adError))
+                    loadRewardedAd(ids, index + 1, onLoaded, onFailed)
                 }
             }
         )
@@ -229,7 +221,8 @@ object RewardAds {
             return
         }
 
-        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+        // NextGen: gộp paid + full-screen events vào adEventCallback
+        ad.adEventCallback = object : RewardedAdEventCallback {
             override fun onAdShowedFullScreenContent() {
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, "", AdsLog.Action.SHOW, AdsLog.Mess.START_SHOW, null))
                 isShowing = true
@@ -240,8 +233,14 @@ object RewardAds {
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, "", AdsLog.Action.ADS_CLICK, AdsLog.Action.SHOW, null))
             }
 
-            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED, adError))
+            override fun onAdPaid(value: SdkAdValue) {
+                AdsManager.onAdsPair(
+                    AdValue(value, ad.getResponseInfo().loadedAdSourceResponseInfo)
+                )
+            }
+
+            override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+                AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED, fullScreenContentError))
                 rewardedAd = null
                 isShowing = false
                 showAdUnavailableToast(activity)
@@ -263,13 +262,18 @@ object RewardAds {
                 }
 
                 callback.onAdClosed()
-                if (autoCache) preload(activity)
+                if (autoCache) preload()
             }
         }
         AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, "", AdsLog.Action.SHOW, AdsLog.Mess.CALL_SHOW, null))
-        ad.show(activity) {
-            hasEarnedReward = true
-        }
+        ad.show(
+            activity,
+            object : OnUserEarnedRewardListener {
+                override fun onUserEarnedReward(rewardItem: RewardItem) {
+                    hasEarnedReward = true
+                }
+            }
+        )
     }
 
     private fun showInterFallback(
