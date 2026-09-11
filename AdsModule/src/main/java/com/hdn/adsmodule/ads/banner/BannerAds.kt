@@ -7,15 +7,16 @@ import android.util.DisplayMetrics
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
-import com.google.ads.mediation.admob.AdMobAdapter
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.AdView
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.OnPaidEventListener
 
 import androidx.core.view.isNotEmpty
+import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
+import com.google.android.libraries.ads.mobile.sdk.banner.AdView
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue as SdkAdValue
 import com.hdn.adsmodule.R
 import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
@@ -60,21 +61,20 @@ object BannerAds {
     private var globalBannerView: AdView? = null
     private var isBannerLoaded = false
 
-    private fun getAdRequest(type: BannerType): AdRequest = when (type) {
-        BannerType.NORMAL -> AdRequest.Builder().build()
-        BannerType.COLLAPSIBLE -> AdRequest.Builder()
-            .addNetworkExtrasBundle(
-                AdMobAdapter::class.java,
-                Bundle().apply { putString("collapsible", "bottom") }
-            )
-            .build()
+    // NextGen: request cần adUnitId + adSize ngay từ Builder; collapsible dùng setGoogleExtrasBundle thay AdMobAdapter
+    private fun buildRequest(type: BannerType, adUnitId: String, adSize: AdSize): BannerAdRequest {
+        val builder = BannerAdRequest.Builder(adUnitId, adSize)
+        if (type == BannerType.COLLAPSIBLE) {
+            builder.setGoogleExtrasBundle(Bundle().apply { putString("collapsible", "bottom") })
+        }
+        return builder.build()
     }
 
     fun getAdSize(activity: Activity): AdSize {
         val outMetrics = DisplayMetrics()
         activity.windowManager.defaultDisplay.getMetrics(outMetrics)
         val adWidth = (outMetrics.widthPixels / outMetrics.density).toInt()
-        return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(activity, adWidth)
+        return AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, adWidth)
     }
 
     @SuppressLint("InflateParams")
@@ -188,33 +188,53 @@ object BannerAds {
             return
         }
 
-        val bannerView = AdView(activity).apply {
-            adUnitId = ids[index]
-            setAdSize(adSize)
-            AdsManager.onAdsLog(
-                AdsLog(
-                    if (bannerType == BannerType.NORMAL) AdsLog.Type.BANNER else AdsLog.Type.BANNER_COLLAPSIBLE,
-                    adUnitId,
-                    AdsLog.Action.LOAD,
-                    AdsLog.Mess.START_LOAD,
-                    null
-                )
-            )
-            onPaidEventListener = OnPaidEventListener { adValue ->
-                AdsManager.onAdsPair(
-                    AdValue(
-                        adValue,
-                        responseInfo?.loadedAdapterResponseInfo
-                    )
-                )
-            }
+        val adUnitId = ids[index]
+        // NextGen: AdView tự hiển thị ad sau khi loadAd; add vào container trước rồi load
+        val adView = AdView(activity)
+        adViewContainer.addView(adView)
+        if (bannerType == BannerType.NORMAL && index == 0) {
+            globalBannerView = adView
+        }
 
-            adListener = object : AdListener() {
-                override fun onAdLoaded() {
+        AdsManager.onAdsLog(
+            AdsLog(
+                if (bannerType == BannerType.NORMAL) AdsLog.Type.BANNER else AdsLog.Type.BANNER_COLLAPSIBLE,
+                adUnitId,
+                AdsLog.Action.LOAD,
+                AdsLog.Mess.START_LOAD,
+                null
+            )
+        )
+
+        adView.loadAd(
+            buildRequest(bannerType, adUnitId, adSize),
+            object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) {
                     if (bannerType == BannerType.NORMAL) {
                         isBannerLoaded = true
-                        globalBannerView = this@apply
+                        globalBannerView = adView
                     }
+
+                    ad.adEventCallback = object : BannerAdEventCallback {
+                        override fun onAdClicked() {
+                            AdsManager.onAdsLog(
+                                AdsLog(
+                                    if (bannerType == BannerType.NORMAL) AdsLog.Type.BANNER else AdsLog.Type.BANNER_COLLAPSIBLE,
+                                    adUnitId,
+                                    AdsLog.Action.ADS_CLICK,
+                                    AdsLog.Action.SHOW,
+                                    null
+                                )
+                            )
+                        }
+
+                        override fun onAdPaid(value: SdkAdValue) {
+                            AdsManager.onAdsPair(
+                                AdValue(value, ad.getResponseInfo().loadedAdSourceResponseInfo)
+                            )
+                        }
+                    }
+
                     AdsManager.onAdsLog(
                         AdsLog(
                             if (bannerType == BannerType.NORMAL) AdsLog.Type.BANNER else AdsLog.Type.BANNER_COLLAPSIBLE,
@@ -236,19 +256,7 @@ object BannerAds {
                     hideLoading(loadingText, loadingOverlay)
                 }
 
-                override fun onAdClicked() {
-                    AdsManager.onAdsLog(
-                        AdsLog(
-                            if (bannerType == BannerType.NORMAL) AdsLog.Type.BANNER else AdsLog.Type.BANNER_COLLAPSIBLE,
-                            adUnitId,
-                            AdsLog.Action.ADS_CLICK,
-                            AdsLog.Action.SHOW,
-                            null
-                        )
-                    )
-                }
-
-                override fun onAdFailedToLoad(error: LoadAdError) {
+                override fun onAdFailedToLoad(adError: LoadAdError) {
                     if (bannerType == BannerType.NORMAL) {
                         isBannerLoaded = false
                         globalBannerView = null
@@ -259,10 +267,10 @@ object BannerAds {
                             adUnitId,
                             AdsLog.Action.LOAD,
                             AdsLog.Mess.LOAD_FAILED,
-                            error
+                            adError
                         )
                     )
-                    adViewContainer.removeView(this@apply)
+                    adViewContainer.removeView(adView)
                     loadBannerByIndex(
                         activity = activity,
                         ids = ids,
@@ -275,14 +283,7 @@ object BannerAds {
                     )
                 }
             }
-        }
-
-        if (bannerType == BannerType.NORMAL && index == 0) {
-            globalBannerView = bannerView
-        }
-        adViewContainer.addView(bannerView)
-
-        bannerView.loadAd(getAdRequest(bannerType))
+        )
     }
 
     private fun showLoading(loadingText: View, loadingOverlay: View) {

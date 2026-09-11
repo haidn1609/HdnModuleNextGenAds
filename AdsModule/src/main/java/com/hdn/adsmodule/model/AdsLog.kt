@@ -1,13 +1,13 @@
 package com.hdn.adsmodule.model
 
-import com.google.android.gms.ads.AdError
-
 class AdsLog(
     var adType: String,
     var adId: String,
     var action: String,
     var mess: String,
-    var adError: AdError?
+    // ponytail: Any? vì NextGen không có base AdError chung (LoadAdError/FullScreenContentError rời nhau);
+    // field chỉ dùng để log. Đổi sang sealed type nếu sau này cần phân loại lỗi.
+    var adError: Any?
 ) {
     // Loại ad (adType). Native dùng key động nên không có hằng ở đây.
     object Type {

@@ -1,35 +1,36 @@
-package com.hdn.theme.testmoduleads;
+package com.hdn.theme.testmoduleads
 
-import android.app.Application;
+import android.app.Application
+import com.google.android.libraries.ads.mobile.sdk.MobileAds
+import com.google.android.libraries.ads.mobile.sdk.common.AdActivity
+import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
+import com.google.firebase.FirebaseApp
+import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.hdn.adsmodule.ads.open.OpenAds.disableAdsOpenForActivity
+import com.hdn.adsmodule.ads.open.OpenAdsHelper
 
-import com.google.android.gms.ads.AdActivity;
-import com.google.android.gms.ads.MobileAds;
-import com.google.firebase.FirebaseApp;
-import com.google.firebase.crashlytics.FirebaseCrashlytics;
-import com.hdn.adsmodule.ads.open.OpenAds;
-import com.hdn.adsmodule.ads.open.OpenAdsHelper;
-
-public class App extends Application {
-    private static App instance;
-
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        instance = this;
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
 
         MobileAds.initialize(
-                this,
-                initializationStatus -> {
-                });
+            this,
+            // Sample AdMob app ID: ca-app-pub-3940256099942544~3347511713
+            InitializationConfig.Builder("ca-app-pub-8048589936179473~2309335696").build()
+        ) {
+            // Adapter initialization is complete.
+        }
 
-        new OpenAdsHelper().setup(this);
-        OpenAds.disableAdsOpenForActivity(AdActivity.class);
+        OpenAdsHelper().setup(this)
+        disableAdsOpenForActivity(AdActivity::class.java)
 
-        FirebaseApp.initializeApp(this);
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG);
+        FirebaseApp.initializeApp(this)
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
     }
 
-    public static App getInstance() {
-        return instance;
+    companion object {
+        var instance: App? = null
+            private set
     }
 }
