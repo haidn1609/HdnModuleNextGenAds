@@ -1,6 +1,8 @@
 package com.hdn.adsmodule.ads
 
 import android.app.Activity
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
@@ -24,12 +26,41 @@ object AdsManager {
     @JvmStatic
     var adsLog: ((AdsLog) -> Unit)? = null
 
+    // NextGen SDK có thể gọi callback trên background thread -> mọi callback bắn ra ngoài đều đưa về main
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post(block)
+    }
+
+    private fun Callback?.onMain(): Callback? {
+        val cb = this ?: return null
+        return { runOnMain { cb() } }
+    }
+
+    private fun InterCallback?.onMain(): InterCallback? {
+        val cb = this ?: return null
+        return { result -> runOnMain { cb(result) } }
+    }
+
+    private fun RewardCallback.onMain(): RewardCallback {
+        val cb = this
+        return object : RewardCallback {
+            override fun onAdShowed() = runOnMain { cb.onAdShowed() }
+            override fun onAdClosed() = runOnMain { cb.onAdClosed() }
+            override fun onRewardEarned() = runOnMain { cb.onRewardEarned() }
+            override fun onAdFailed() = runOnMain { cb.onAdFailed() }
+            override fun onPremium() = runOnMain { cb.onPremium() }
+        }
+    }
+
     fun onAdsPair(adValue: AdValue) {
-        adsPair?.invoke(adValue)
+        runOnMain { adsPair?.invoke(adValue) }
     }
 
     fun onAdsLog(adValue: AdsLog) {
-        adsLog?.invoke(adValue)
+        runOnMain { adsLog?.invoke(adValue) }
     }
 
     //config
@@ -123,7 +154,7 @@ object AdsManager {
     //    open
     @JvmStatic
     fun showOpenAds(activity: Activity, callBack: Callback?) {
-        OpenAds.showOpenAds(activity, callBack)
+        OpenAds.showOpenAds(activity, callBack.onMain())
     }
 
     //    banner
@@ -144,7 +175,7 @@ object AdsManager {
         doneCallBack: Callback?,
         fakeLoadingTime: Long = 0L
     ) {
-        InterSplashAds.showAdsBreak(activity, false, 0, "", startCallback, doneCallBack, fakeLoadingTime)
+        InterSplashAds.showAdsBreak(activity, false, 0, "", startCallback.onMain(), doneCallBack.onMain(), fakeLoadingTime)
     }
 
     @JvmStatic
@@ -162,8 +193,8 @@ object AdsManager {
             true,
             dialogRes,
             nativeKey,
-            startCallback,
-            doneCallBack,
+            startCallback.onMain(),
+            doneCallBack.onMain(),
             fakeLoadingTime
         )
     }
@@ -176,7 +207,7 @@ object AdsManager {
         fakeLoadingTime: Long = 0L,
         callback: InterCallback?
     ) {
-        InterAds.showAdsBreak(activity, useWithoutVip, fakeLoadingTime, callback)
+        InterAds.showAdsBreak(activity, useWithoutVip, fakeLoadingTime, callback.onMain())
     }
 
     // forceShow = load-and-show. Loading bắn ra ngoài qua AdLoading.onLoading.
@@ -190,7 +221,7 @@ object AdsManager {
         fakeLoadingTime: Long = 0L,
         callback: InterCallback?
     ) {
-        InterAds.forceShowAdsBreak(activity, useWithoutVip, autoCache, fakeLoadingTime, callback)
+        InterAds.forceShowAdsBreak(activity, useWithoutVip, autoCache, fakeLoadingTime, callback.onMain())
     }
 
     //    reward
@@ -204,10 +235,11 @@ object AdsManager {
         fakeLoadingTime: Long = 0L,
         callback: RewardCallback
     ) {
+        val mainCallback = callback.onMain()
         if (useInterFallback) {
-            RewardAds.showRewardWithFallbackInter(activity, useWithoutVip, autoCache, fakeLoadingTime, callback)
+            RewardAds.showRewardWithFallbackInter(activity, useWithoutVip, autoCache, fakeLoadingTime, mainCallback)
         } else {
-            RewardAds.show(activity, callback, useWithoutVip, autoCache, fakeLoadingTime)
+            RewardAds.show(activity, mainCallback, useWithoutVip, autoCache, fakeLoadingTime)
         }
     }
 

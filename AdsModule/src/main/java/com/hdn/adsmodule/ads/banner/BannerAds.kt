@@ -22,6 +22,7 @@ import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
 import com.hdn.adsmodule.ads.AdsManager
+import com.hdn.adsmodule.ads.MainThread
 import com.hdn.adsmodule.model.AdValue
 import com.hdn.adsmodule.model.AdsLog
 import com.hdn.adsmodule.model._enum.BannerType
@@ -74,7 +75,10 @@ object BannerAds {
         val outMetrics = DisplayMetrics()
         activity.windowManager.defaultDisplay.getMetrics(outMetrics)
         val adWidth = (outMetrics.widthPixels / outMetrics.density).toInt()
-        return AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, adWidth)
+        // Anchored adaptive thường (~50dp), thấp hơn getLargeAnchored (50-150dp) — giống chiều cao bản cũ.
+        // NextGen chỉ còn bản này (deprecated) cho height thường; getLarge quá cao.
+        @Suppress("DEPRECATION")
+        return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(activity, adWidth)
     }
 
     @SuppressLint("InflateParams")
@@ -209,7 +213,7 @@ object BannerAds {
         adView.loadAd(
             buildRequest(bannerType, adUnitId, adSize),
             object : AdLoadCallback<BannerAd> {
-                override fun onAdLoaded(ad: BannerAd) {
+                override fun onAdLoaded(ad: BannerAd) = MainThread.run {
                     if (bannerType == BannerType.NORMAL) {
                         isBannerLoaded = true
                         globalBannerView = adView
@@ -256,7 +260,7 @@ object BannerAds {
                     hideLoading(loadingText, loadingOverlay)
                 }
 
-                override fun onAdFailedToLoad(adError: LoadAdError) {
+                override fun onAdFailedToLoad(adError: LoadAdError) = MainThread.run {
                     if (bannerType == BannerType.NORMAL) {
                         isBannerLoaded = false
                         globalBannerView = null

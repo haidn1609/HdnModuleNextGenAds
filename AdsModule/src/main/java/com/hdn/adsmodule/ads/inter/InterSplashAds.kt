@@ -19,6 +19,7 @@ import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
 import com.hdn.adsmodule.ads.AdsManager
+import com.hdn.adsmodule.ads.MainThread
 import com.hdn.adsmodule.ads.fullDialog.FullScreenDialog
 import com.hdn.adsmodule.base.ui.LoadingDialog
 import com.hdn.adsmodule.model.AdValue
@@ -84,7 +85,7 @@ object InterSplashAds {
         InterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<InterstitialAd> {
-                override fun onAdLoaded(ad: InterstitialAd) {
+                override fun onAdLoaded(ad: InterstitialAd) = MainThread.run {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
                     mInterstitialAd = ad
                     isLoading = false
@@ -92,7 +93,7 @@ object InterSplashAds {
                     callback?.invoke()
                 }
 
-                override fun onAdFailedToLoad(adError: LoadAdError) {
+                override fun onAdFailedToLoad(adError: LoadAdError) = MainThread.run {
                     AdsManager.onAdsLog(
                         AdsLog(
                             AdsLog.Type.INTER_SPLASH,
@@ -237,7 +238,7 @@ object InterSplashAds {
                 )
             }
 
-            override fun onAdDismissedFullScreenContent() {
+            override fun onAdDismissedFullScreenContent() = MainThread.run {
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER_SPLASH, "", AdsLog.Action.SHOW_ADS_FULL, AdsLog.Mess.SHOW_DISMISS, null))
                 mInterstitialAd = null
                 if (dialogNativeFull.dialog != null && showDialog) {

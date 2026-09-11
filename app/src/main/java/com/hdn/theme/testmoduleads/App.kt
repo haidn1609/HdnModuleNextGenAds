@@ -16,8 +16,9 @@ class App : Application() {
 
         MobileAds.initialize(
             this,
-            // Sample AdMob app ID: ca-app-pub-3940256099942544~3347511713
-            InitializationConfig.Builder("ca-app-pub-8048589936179473~2309335696").build()
+            InitializationConfig.Builder("ca-app-pub-8048589936179473~2309335696")
+                .setNativeValidatorDisabled() // tắt overlay "AdMob native ad validator" khi test native
+                .build()
         ) {
             // Adapter initialization is complete.
         }

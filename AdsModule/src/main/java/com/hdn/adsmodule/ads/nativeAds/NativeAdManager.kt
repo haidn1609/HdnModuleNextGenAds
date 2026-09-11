@@ -21,6 +21,7 @@ import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView
 import com.hdn.adsmodule.R
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsManager
+import com.hdn.adsmodule.ads.MainThread
 import com.hdn.adsmodule.model.AdValue
 import com.hdn.adsmodule.model.AdsLog
 import java.lang.ref.WeakReference
@@ -99,7 +100,7 @@ class NativeAdManager(
         NativeAdLoader.load(
             request,
             object : NativeAdLoaderCallback {
-                override fun onNativeAdLoaded(ad: NativeAd) {
+                override fun onNativeAdLoaded(ad: NativeAd) = MainThread.run {
 
                     activeAds.add(ad)
 
@@ -161,7 +162,7 @@ class NativeAdManager(
                     )
                 }
 
-                override fun onAdFailedToLoad(adError: LoadAdError) {
+                override fun onAdFailedToLoad(adError: LoadAdError) = MainThread.run {
 
                     AdsManager.onAdsLog(
                         AdsLog(key, adUnitId, AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, adError)
@@ -444,14 +445,8 @@ class NativeAdManager(
                 }
             }
 
-            if (mediaView != null) {
-                registerNativeAd(ad, mediaView)
-            } else {
-                // NextGen yêu cầu MediaView để register -> không có media_view thì không hiển thị/track được
-                AdsManager.onAdsLog(
-                    AdsLog(key, "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED, null)
-                )
-            }
+            // NextGen: mediaView có thể null (layout no-media không cần MediaView) -> registerNativeAd nhận nullable
+            registerNativeAd(ad, mediaView)
 
             AdsManager.onAdsLog(
                 AdsLog(

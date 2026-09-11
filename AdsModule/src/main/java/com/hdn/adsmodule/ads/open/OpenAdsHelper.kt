@@ -23,8 +23,12 @@ class OpenAdsHelper : DefaultLifecycleObserver, Application.ActivityLifecycleCal
 
     override fun onStart(owner: LifecycleOwner) {
         currentActivity?.let { activity ->
-            if (!OpenAds.disableClasses.contains(activity.javaClass)) {
+            if (OpenAds.disableClasses.contains(activity.javaClass)) return@let
+            if (OpenAds.canShowOpenAdNow()) {
                 Overlay.start(activity)
+            } else {
+                // Không show được ad -> KHÔNG bật Overlay; tranh thủ preload cho lần sau
+                OpenAds.initOpenAds { }
             }
         }
     }

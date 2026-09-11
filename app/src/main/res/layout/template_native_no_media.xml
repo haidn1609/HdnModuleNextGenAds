@@ -16,15 +16,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-            <!-- NextGen bắt buộc MediaView cho registerNativeAd; native no-media nên để ẩn -->
-            <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
-                android:id="@+id/media_view"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/icon"
                 android:layout_width="30dp"

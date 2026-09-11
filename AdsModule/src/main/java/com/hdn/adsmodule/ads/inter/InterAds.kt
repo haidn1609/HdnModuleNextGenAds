@@ -17,6 +17,7 @@ import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
 import com.hdn.adsmodule.ads.AdsManager
+import com.hdn.adsmodule.ads.MainThread
 import com.hdn.adsmodule.base.ui.LoadingDialog
 import com.hdn.adsmodule.model.AdValue
 import com.hdn.adsmodule.model.AdsLog
@@ -110,7 +111,7 @@ object InterAds {
         InterstitialAd.load(
             AdRequest.Builder(ids[index]).build(),
             object : AdLoadCallback<InterstitialAd> {
-                override fun onAdLoaded(ad: InterstitialAd) {
+                override fun onAdLoaded(ad: InterstitialAd) = MainThread.run {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
                     mInterstitialAd = ad
                     isLoading = false
@@ -118,7 +119,7 @@ object InterAds {
                     onLoadSuccess?.invoke()
                 }
 
-                override fun onAdFailedToLoad(adError: LoadAdError) {
+                override fun onAdFailedToLoad(adError: LoadAdError) = MainThread.run {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.INTER, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, adError))
                     loadInterstitialByIndex(
                         ids = ids,

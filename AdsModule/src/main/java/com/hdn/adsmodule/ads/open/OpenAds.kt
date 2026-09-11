@@ -14,6 +14,7 @@ import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
 import com.hdn.adsmodule.ads.AdsManager
+import com.hdn.adsmodule.ads.MainThread
 import com.hdn.adsmodule.ads.inter.Callback
 import com.hdn.adsmodule.model.AdValue
 import com.hdn.adsmodule.model.AdsLog
@@ -102,6 +103,11 @@ object OpenAds {
         return appOpenAd != null && !isOpenShowingAd && isOpenAdsCanUse()
     }
 
+    // Open ad đủ điều kiện show NGAY -> dùng để quyết định có bật Overlay hay không
+    fun canShowOpenAdNow(): Boolean {
+        return AdsController.canShowAds() && flagQC == 1 && isCanShowOpenAds()
+    }
+
     private val isCanLoadAds: Boolean
         get() {
             if (!AdsController.canShowAds()) return false
@@ -146,7 +152,7 @@ object OpenAds {
                         )
                     }
 
-                    override fun onAdDismissedFullScreenContent() {
+                    override fun onAdDismissedFullScreenContent() = MainThread.run {
                         AdsManager.onAdsLog(AdsLog(AdsLog.Type.OPEN , "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_DISMISS,null))
                         isOpenShowingAd = false
                         appOpenAd = null

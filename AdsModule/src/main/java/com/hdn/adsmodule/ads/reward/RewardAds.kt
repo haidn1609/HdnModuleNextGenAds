@@ -19,6 +19,7 @@ import com.hdn.adsmodule.ads.AdUnitParser
 import com.hdn.adsmodule.ads.AdsController
 import com.hdn.adsmodule.ads.AdsIdConfig
 import com.hdn.adsmodule.ads.AdsManager
+import com.hdn.adsmodule.ads.MainThread
 import com.hdn.adsmodule.ads.inter.InterAds
 import com.hdn.adsmodule.base.ui.LoadingDialog
 import com.hdn.adsmodule.model.AdValue
@@ -43,6 +44,7 @@ object RewardAds {
         private set
 
     private val handler = Handler(Looper.getMainLooper())
+    @Volatile
     private var hasEarnedReward = false
     private fun showAdUnavailableToast(activity: Activity) {
         Toast.makeText(activity, activity.getString(R.string.ad_unavailable), Toast.LENGTH_SHORT)
@@ -191,14 +193,14 @@ object RewardAds {
         RewardedAd.load(
             AdRequest.Builder(ids[index]).build(),
             object : AdLoadCallback<RewardedAd> {
-                override fun onAdLoaded(ad: RewardedAd) {
+                override fun onAdLoaded(ad: RewardedAd) = MainThread.run {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_SUCCESS, null))
                     rewardedAd = ad
                     isLoading = false
                     onLoaded(ad)
                 }
 
-                override fun onAdFailedToLoad(adError: LoadAdError) {
+                override fun onAdFailedToLoad(adError: LoadAdError) = MainThread.run {
                     AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, ids[index], AdsLog.Action.LOAD, AdsLog.Mess.LOAD_FAILED, adError))
                     loadRewardedAd(ids, index + 1, onLoaded, onFailed)
                 }
@@ -239,7 +241,7 @@ object RewardAds {
                 )
             }
 
-            override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+            override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) = MainThread.run {
                 AdsManager.onAdsLog(AdsLog(AdsLog.Type.REWARD, "", AdsLog.Action.SHOW, AdsLog.Mess.SHOW_FAILED, fullScreenContentError))
                 rewardedAd = null
                 isShowing = false

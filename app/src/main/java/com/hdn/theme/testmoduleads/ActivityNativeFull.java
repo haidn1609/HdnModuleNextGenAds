@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.databinding.DataBindingUtil;
 
@@ -51,7 +52,7 @@ public class ActivityNativeFull extends AppCompatActivity {
         }
 
         // btnClose -> đóng activity
-        binding.btnClose.setOnClickListener(v -> finish());
+        binding.btnClose.setOnClickListener(v -> closeAndFinish());
 
         // btnOpenStore -> trigger click CTA của native ad, rồi ẩn nút này và hiện btnClose
         binding.btnOpenStore.setOnClickListener(v -> {
@@ -62,14 +63,26 @@ public class ActivityNativeFull extends AppCompatActivity {
             binding.btnOpenStore.setVisibility(View.GONE);
             binding.btnClose.setVisibility(View.VISIBLE);
         });
+
+        // Nuốt back: onBackPressed() cũ KHÔNG được gọi khi predictive back bật (targetSdk 36).
+        // Dùng OnBackPressedDispatcher, callback enabled=true + rỗng để chặn. Chỉ đóng bằng nút.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+            }
+        });
     }
 
-    // Nuốt back: chỉ đóng bằng nút (ponytail: cố tình không gọi super)
-    @Override
-    public void onBackPressed() {
+    // Gọi callback ngay rồi finish -> tránh delay do chờ onDestroy
+    private void closeAndFinish() {
+        if (closeListener != null) {
+            closeListener.onClose();
+            closeListener = null;
+        }
+        finish();
     }
 
-    // Gọi callback sau khi close (chỉ khi thực sự finish, không phải recreate)
+    // Fallback: nếu finish bằng đường khác mà callback chưa gọi (đã null thì bỏ qua)
     @Override
     protected void onDestroy() {
         super.onDestroy();
